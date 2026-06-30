@@ -86,7 +86,7 @@ This repo is the **Python reference implementation** — the easiest to read, te
 
 | Aspect | Where |
 |---|---|
-| **Methodology** (why this design) | [checkgrow](https://github.com/YuhaoLin2005/checkgrow) — failure patterns, hybrid architecture, canonical framework |
+| **Methodology** (why this design) | [checkgrow](https://github.com/gategrow/checkgrow) — failure patterns, hybrid architecture, canonical framework |
 | **Reference implementation** (what you're reading) | **delivery-gate** (this repo) — full feature set (config-health + rationalization detection) |
 | **Production deployment** (Node.js, zero-config) | [ECC fork](https://github.com/YuhaoLin2005/ecc/blob/ec/ec.py) — auto-registering Stop hook, rationalization removed |
 
@@ -94,10 +94,10 @@ This repo is the **Python reference implementation** — the easiest to read, te
 
 delivery-gate is a community project — contributions and feedback welcome.
 
-- **Found a bug?** [Open an issue](https://github.com/YuhaoLin2005/delivery-gate/issues/new?template=bug_report.md)
-- **Have an idea?** [Request a feature](https://github.com/YuhaoLin2005/delivery-gate/issues/new?template=feature_request.md)
+- **Found a bug?** [Open an issue](https://github.com/gategrow/delivery-gate/issues/new?template=bug_report.md)
+- **Have an idea?** [Request a feature](https://github.com/gategrow/delivery-gate/issues/new?template=feature_request.md)
 - **Want to contribute?** Read [CONTRIBUTING.md](CONTRIBUTING.md) — good first issues are tagged and waiting
-- **Deep dive:** [checkgrow](https://github.com/YuhaoLin2005/checkgrow) explains the methodology behind the mechanical gate
+- **Deep dive:** [checkgrow](https://github.com/gategrow/checkgrow) explains the methodology behind the mechanical gate
 
 Maintained by [@YuhaoLin2005](https://github.com/YuhaoLin2005)
 
@@ -132,7 +132,7 @@ This architecture transplants three existing practices into AI config management
 
 ## Limitations
 
-The mechanical gate enforces **habits** and **completeness**, not content quality. It checks that you captured learning, not whether the learning is correct. For reasoning quality, pair with [self-audit](https://github.com/YuhaoLin2005/self-audit).
+The mechanical gate enforces **habits** and **completeness**, not content quality. It checks that you captured learning, not whether the learning is correct. For reasoning quality, pair with [self-audit](https://github.com/gategrow/self-audit).
 
 ## Compatibility
 
@@ -150,9 +150,9 @@ The mechanical gate enforces **habits** and **completeness**, not content qualit
 
 ## Related
 
-- [checkgrow](https://github.com/YuhaoLin2005/checkgrow) — Full AI quality toolkit (delivery-gate is the mechanical layer)
-- [self-audit](https://github.com/YuhaoLin2005/self-audit) — Four-dimension reasoning quality audit
-- [dual-pool-review](https://github.com/YuhaoLin2005/dual-pool-review) — Multi-persona adversarial review methodology
+- [checkgrow](https://github.com/gategrow/checkgrow) — Full AI quality toolkit (delivery-gate is the mechanical layer)
+- [self-audit](https://github.com/gategrow/self-audit) — Four-dimension reasoning quality audit
+- [dual-pool-review](https://github.com/gategrow/dual-pool-review) — Multi-persona adversarial review methodology
 
 ## License
 
