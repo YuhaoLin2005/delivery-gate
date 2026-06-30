@@ -127,7 +127,7 @@ Session: 5 edits, nothing written to memory
 
 ## Limitations
 
-The mechanical gate enforces **habits** and **completeness**, not content quality. It checks that you captured learning, not whether the learning is correct. For reasoning quality, pair with [self-audit](https://github.com/YuhaoLin2005/self-audit).
+The mechanical gate enforces **habits** and **completeness**, not content quality. It checks that you captured learning, not whether the learning is correct. For reasoning quality, pair with [self-audit](https://github.com/gategrow/self-audit).
 
 ## Compatibility
 
@@ -137,9 +137,9 @@ The mechanical gate enforces **habits** and **completeness**, not content qualit
 
 ## Related
 
-- [checkgrow](https://github.com/YuhaoLin2005/checkgrow) — The methodology behind the mechanical gate: failure patterns, hybrid architecture, T-CBB convergence
-- [self-audit](https://github.com/YuhaoLin2005/self-audit) — Four-dimension reasoning quality audit (C/C/G/H)
-- [dual-pool-review](https://github.com/YuhaoLin2005/dual-pool-review) — Multi-persona adversarial review methodology
+- [checkgrow](https://github.com/gategrow/checkgrow) — The methodology behind the mechanical gate: failure patterns, hybrid architecture, T-CBB convergence
+- [self-audit](https://github.com/gategrow/self-audit) — Four-dimension reasoning quality audit (C/C/G/H)
+- [dual-pool-review](https://github.com/gategrow/dual-pool-review) — Multi-persona adversarial review methodology
 
 ## License
 
