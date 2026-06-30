@@ -127,19 +127,13 @@ Session: 5 edits, nothing written to memory
 
 ## Limitations
 
-The mechanical gate enforces **habits** and **completeness**, not content quality. It checks that you captured learning, not whether the learning is correct. For reasoning quality, pair with [self-audit](https://github.com/gategrow/self-audit).
+The mechanical gate enforces **habits** and **completeness**, not content quality. It checks that you captured learning, not whether the learning is correct. For output consistency checks, pair with [self-audit](https://github.com/gategrow/self-audit).
 
 ## Compatibility
 
 - Python 3.8+
 - Windows, macOS, Linux
 - Zero dependencies beyond stdlib
-
-## Related
-
-- [checkgrow](https://github.com/gategrow/checkgrow) — The methodology behind the mechanical gate: failure patterns, hybrid architecture, T-CBB convergence
-- [self-audit](https://github.com/gategrow/self-audit) — Four-dimension reasoning quality audit (C/C/G/H)
-- [dual-pool-review](https://github.com/gategrow/dual-pool-review) — Multi-persona adversarial review methodology
 
 ## License
 
