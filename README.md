@@ -1,63 +1,117 @@
-# Delivery Gate — Mechanical Quality Gate for Claude Code
+# Delivery Gate — Dual-Layer Mechanical Gate for Claude Code
 
-A **Stop hook** that checks session hygiene before Claude can finish — using only deterministic checks: file timestamps, regex patterns, and disk usage. No AI inference.
+A **two-layer Stop hook system** that monitors process and enforces output — using only deterministic checks: regex markers, file timestamps, and disk usage. No AI inference.
 
-This is a **mechanical** gate. It doesn't evaluate whether your thinking was good — it checks whether you captured what you learned. For reasoning quality, pair it with `self-audit`.
+```
+config-health（Process Monitor）→ tracks rule execution → soft feedback (never blocks)
+         ↓
+quality-gate（Output Enforcer）→ checks output completeness → hard block (≥3 stale → exit 2)
+         ↓
+       Delivery
+```
 
-200 lines of Python. Stdlib only. 4 rounds of automated review found 9 bugs.
+| Dimension | config-health | quality-gate |
+|-----------|--------------|--------------|
+| **Problem** | Doing it right | Done doing it |
+| **Checks** | Process (rule markers) | Output (five-library mtime) |
+| **Method** | Regex counting `[✓RULE]` | File timestamps |
+| **Blocks** | Never blocks (exit 0) | ≥3 stale → hard block |
+| **Cost** | Normal path: zero tokens | Only surfaces on anomaly |
+| **Trigger** | Every Stop | Every Stop (after config-health) |
 
-## What It Checks
+## Why Two Layers
+
+A single-layer gate is either too soft (reminders → ignored) or too hard (frequent blocks → bypassed). Two layers each do one job:
+
+- **Process layer (soft):** Rule execution rate low? Remind but don't block — might be exploring, experimenting
+- **Output layer (hard):** Five libraries not updated? Block — delivery must be complete, non-negotiable
+
+The boundary isn't "importance" — it's **"can this be fixed later?"** Missed rule execution can be retroactively marked. Missed output records are lost forever.
+
+## What's Inside
+
+### config-health.py — Process Monitor
 
 | Check | Mechanism | On Hit |
 |-------|-----------|--------|
-| Rationalization patterns | Regex on transcript | Warning only (never blocks) |
-| Stale learning libraries | File modification timestamps | Blocks if >=3 stale OR growth-log stale after complex task |
+| Rule marker counting | Regex `[✓THINK]` `[✓CONTEXT]` `[✓DELIVERY]` in transcript | Log to JSONL, update pending-verifications.md |
+| Verification tracking | 3-session window per rule | Verified → auto-remove from pending list |
+| Config integrity | Core files exist + non-empty | Dashboard alert (manual check only) |
+| Session cost tier | Cumulative sessions count | Dashboard tier (L0-L3) |
+
+### quality-gate.py — Output Enforcer
+
+| Check | Mechanism | On Hit |
+|-------|-----------|--------|
+| Stale learning libraries | File modification timestamps | Block if ≥3 stale OR growth-log stale after complex task |
 | Disk space < 15GB | `shutil.disk_usage` | Block (exit 2) |
-
-Rationalization detection warns about patterns like "skip tests for now" and "pre-existing bug." It never blocks on its own — regex heuristics can false-positive. The blocking conditions are: disk critical, or the learning libraries weren't touched after a complex session.
-
-## Why
-
-Claude Code's built-in checks cover code quality (build → type → lint → test). A different failure mode goes unchecked: the agent ships working code while neglecting session hygiene — learning not captured, shortcuts rationalized, disk running out.
-
-The hook enforces the habit: complex task → must touch learning libraries.
+| Rationalization patterns | Regex on transcript tail | Warning only (never blocks alone) |
 
 ## Install
 
 ```bash
+cp config-health.py ~/.claude/scripts/
 cp quality-gate.py ~/.claude/scripts/
 ```
 
-Add to `~/.claude/settings.json`:
+Add to `~/.claude/settings.json` (order matters — config-health first):
+
 ```json
 {
   "hooks": {
-    "Stop": [{
-      "hooks": [{
+    "Stop": [
+      {
+        "type": "command",
+        "command": "python3 ~/.claude/scripts/config-health.py --hook",
+        "timeout": 5000
+      },
+      {
         "type": "command",
         "command": "python3 ~/.claude/scripts/quality-gate.py",
         "timeout": 5000
-      }]
-    }]
+      }
+    ]
   }
 }
 ```
 
+Manual health dashboard:
+```bash
+python3 ~/.claude/scripts/config-health.py --check
+```
+
 ## Configuration
 
-Edit `quality-gate.py`:
+### config-health.py
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `RULES` | THINK/CONTEXT/DELIVERY | Rules to track with regex markers |
+| `VERIFICATION_WINDOW` | 3 | Sessions needed for rule to "pass" |
+| `MIN_TOOL_CALLS_FOR_CHECK` | 5 | Minimum tools to consider session complex |
+| `MIN_EDITS_FOR_DELIVERY` | 3 | Minimum edits to expect DELIVERY marker |
+
+### quality-gate.py
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `RATIONALIZE` | 4 patterns | Regex patterns for rationalization detection |
 | `LIBS` | 5 libraries | Files/dirs to check for today's updates |
 | `COMPLEX_THRESHOLD` | 3 | Edit/Write calls to classify as complex |
-| `DISK_WARN_GB` | 50 | Warn below this |
 | `DISK_CRIT_GB` | 15 | Block below this |
+
+## The Dual-Layer Principle
+
+> **"The boundary between soft and hard is not importance — it's whether it can be fixed later."**
+
+This architecture transplants three existing practices into AI config management:
+- **TDD verifiability**: Rules embed their own success criteria (`[✓THINK]` markers) — following isn't a vague promise, it's a countable binary
+- **Unix silence**: "No news is good news" → normal path consumes zero context tokens
+- **Control theory feedback loop**: config-health.py → pending-verifications.md → startup read → AI focuses → verification passes → auto-delete
 
 ## Limitations
 
-The hook enforces the **habit** of touching learning libraries, not the quality of what was written. If `output-index.md` gets updated but `growth-log` is skipped, the hook passes. This is by design — mechanical gates check machine-verifiable facts. For content quality, use `self-audit`.
+The mechanical gate enforces **habits** and **completeness**, not content quality. It checks that you captured learning, not whether the learning is correct. For reasoning quality, pair with [self-audit](https://github.com/YuhaoLin2005/self-audit).
 
 ## Compatibility
 
@@ -67,7 +121,7 @@ The hook enforces the **habit** of touching learning libraries, not the quality 
 
 ## Quality
 
-4 rounds of CodeRabbit + Greptile review caught 9 real bugs:
+4 rounds of CodeRabbit + Greptile review on quality-gate.py caught 9 real bugs:
 - Missing stdin→stdout pass-through
 - Python 3.8 crash (`list[str]` not subscriptable)
 - Non-recursive directory scan
@@ -75,9 +129,9 @@ The hook enforces the **habit** of touching learning libraries, not the quality 
 
 ## Related
 
-- [checkgrow](https://github.com/YuhaoLin2005/checkgrow) — Full AI quality toolkit (delivery-gate is one component)
+- [checkgrow](https://github.com/YuhaoLin2005/checkgrow) — Full AI quality toolkit (delivery-gate is the mechanical layer)
 - [self-audit](https://github.com/YuhaoLin2005/self-audit) — Four-dimension reasoning quality audit
-- [ECC PR #2378](https://github.com/affaan-m/ECC/pull/2378) — Active upstream contribution
+- [dual-pool-review](https://github.com/YuhaoLin2005/dual-pool-review) — Multi-persona adversarial review methodology
 
 ## License
 
