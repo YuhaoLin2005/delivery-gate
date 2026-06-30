@@ -1,124 +1,146 @@
 ---
 name: delivery-gate
-description: Stop hook that blocks Claude from finishing until quality checks pass. Detects contradictions, omissions, unverified assumptions, rationalization patterns, stale learning logs, and low disk space. Complements verification-loop by checking thinking quality rather than just code quality.
+description: Dual-layer mechanical Stop hook — config-health (process monitor, soft) + quality-gate (output enforcer, hard). Deterministic checks only: regex markers, file timestamps, disk space. Zero AI inference.
 ---
 
-# Delivery Gate — Self-Audit Stop Hook
+# Delivery Gate
 
-A Stop hook that forces Claude to verify quality before it can finish. Unlike verification-loop (which checks build/test/lint), this system checks **thinking quality**: did Claude assume something untested? Did it rationalize skipping work? Did it skip documenting a lesson? Is disk space dangerously low?
+A **dual-layer mechanical gate** for Claude Code Stop hooks. Two Python scripts, zero dependencies, deterministic checks only.
+
+```
+config-health（Process Monitor）→ tracks rule execution → soft feedback (never blocks)
+         ↓
+quality-gate（Output Enforcer）→ checks output completeness → hard block (≥3 stale → exit 2)
+         ↓
+       Delivery
+```
 
 ## When to Activate
 
-- Any project where you want Claude to learn from its mistakes over time
-- Long coding sessions where "done" often means "code works but thinking was sloppy"
-- Teams that want consistent quality standards across AI-assisted work
+- Any project where you want Claude to consistently capture learning across sessions
+- Teams that want mechanical enforcement of output quality (not just trust the AI's word)
+- Solo developers who want the system to remind them, not nag them
 
 ## Installation
 
-### 1. Install the hook script
-
 ```bash
-# From the ECC repo root (after cloning/forking):
-cp skills/delivery-gate/hooks/quality-gate.py ~/.claude/scripts/
+# Copy both scripts into your Claude Code scripts directory
+cp config-health.py ~/.claude/scripts/
+cp quality-gate.py ~/.claude/scripts/
 ```
 
-### 2. Configure in settings.json
+Add to `~/.claude/settings.json` (order matters — config-health first):
 
 ```json
 {
   "hooks": {
     "Stop": [
       {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python3 ~/.claude/scripts/quality-gate.py",
-            "timeout": 5000
-          }
-        ]
+        "type": "command",
+        "command": "python3 ~/.claude/scripts/config-health.py --hook",
+        "timeout": 5000
+      },
+      {
+        "type": "command",
+        "command": "python3 ~/.claude/scripts/quality-gate.py",
+        "timeout": 5000
       }
     ]
   }
 }
 ```
 
-### 3. Add CLAUDE.md rules
-
-Add this block to your project or global CLAUDE.md:
-
-```markdown
-## 收尾铁律
-
-复杂任务结束必须自动输出:
-1. 自审 — 矛盾/遗漏/未验证假设/美化
-2. 教学 — 为什么做/如何做/核心收益 (仅代码任务)
-3. 交付门 — 五库+磁盘
-4. 沉淀 — 新事实→persona | 翻车→growth-log
-5. 产出索引
+Manual health dashboard:
+```bash
+python3 ~/.claude/scripts/config-health.py --check
 ```
-
-### 4. Create memory libraries
-
-See `memory/README.md` for the five-library setup.
 
 ## How It Works
 
-The hook receives the full transcript on stdin (handles both raw text and JSON with `transcript_path` for Claude Code Stop hooks). It:
-1. Detects rationalization patterns (e.g., "this is a pre-existing issue", "skip tests for now")
-2. Counts Edit/Write tool invocations to detect complex tasks
-3. Checks if five learning libraries were modified today (filesystem mtime)
-4. Checks home-directory filesystem disk space
-5. Blocks (exit 2) when complex tasks complete without learning capture, or disk is critically low
+### config-health.py — Process Monitor (soft, never blocks)
+
+| Check | Mechanism | On Hit |
+|-------|-----------|--------|
+| Rule marker counting | Regex `[✓THINK]` `[✓CONTEXT]` `[✓DELIVERY]` in transcript | Log to JSONL, update pending-verifications.md |
+| Verification tracking | 3-session window per rule | Verified → auto-remove from pending list |
+| Config integrity | Core files exist + non-empty | Dashboard alert |
+| Session cost tier | Cumulative sessions count | Dashboard tier (L0-L3) |
+
+### quality-gate.py — Output Enforcer (hard, blocks when stale)
+
+| Check | Mechanism | On Hit |
+|-------|-----------|--------|
+| Stale learning libraries | File modification timestamps | Block if ≥3 stale OR growth-log stale after complex task |
+| Disk space < 15GB | `shutil.disk_usage` | Block (exit 2) |
+| Rationalization patterns | Regex on transcript tail | Warning only (never blocks alone) |
+
+### The Dual-Layer Boundary
+
+The boundary between soft and hard is not "importance" — it's **"can this be fixed later?"**
+
+- Missed rule markers → can retroactively mark and count → **soft**
+- Missed output records → lost forever → **hard**
 
 ## Customization
 
-Edit `quality-gate.py`:
-- `RATIONALIZE` regex patterns — add your team's common excuses
-- `LIBS` dictionary — customize which files to check
-- `MIN_CHARS` — minimum transcript length to trigger checks
-- `DISK_WARN_GB` / `DISK_CRIT_GB` — adjust for your environment
+### config-health.py
+- `RULES` — rules to track with regex markers
+- `VERIFICATION_WINDOW` — sessions needed for a rule to "pass"
+- `MIN_TOOL_CALLS_FOR_CHECK` — minimum tools to consider session complex
+- `MIN_EDITS_FOR_DELIVERY` — minimum edits to expect DELIVERY marker
+
+### quality-gate.py
+- `RATIONALIZE` — regex patterns for rationalization detection
+- `LIBS` — files/dirs to check for today's updates
+- `COMPLEX_THRESHOLD` — Edit/Write calls to classify as complex
+- `DISK_CRIT_GB` — block below this
 
 ## Examples
 
-### Normal session — no blocking
+### Normal path — silence
 
 ```
-$ claude  # edits 2 files, updates growth-log
-...
-Claude tries to stop → hook runs:
-  edit_count=2 (< 3, not complex) → exit 0 (allowed)
+Session: 2 edits, growth-log updated, rules followed
+→ config-health: 85% marker rate, wrote to JSONL (exit 0, no stdout)
+→ quality-gate: 1/5 stale (exit 0, no stdout)
+→ Delivery. Zero tokens consumed.
 ```
 
-### Complex task, learning captured — allowed
+### Rule drift — surfaced, not blocked
 
 ```
-$ claude  # edits 5 files, updates growth-log/2026-06-26.md
-...
-Claude tries to stop → hook runs:
-  edit_count=5 (complex) → checks LIBS → growth-log updated today → exit 0 (allowed)
+Session: rules followed but THINK marker rate dropped to 40%
+→ config-health: wrote "THINK: 40%" to pending-verifications.md (exit 0)
+→ quality-gate: all libs fresh (exit 0)
+→ Delivery. Next session: BODY.md surfaces pending item → AI pays attention.
 ```
 
-### Complex task, no learning — BLOCKED
+### Output incomplete — BLOCKED
 
 ```
-$ claude  # edits 4 files, nothing written to memory
-...
-Claude tries to stop → hook runs:
-  edit_count=4 (complex) → checks LIBS → all 5 stale → exit 2 (blocked)
-  stderr: "Blocked: complex task completed but no learning captured today."
+Session: 5 edits, nothing written to memory
+→ config-health: normal (exit 0)
+→ quality-gate: 5/5 libs stale → exit 2
+  stderr: "BLOCK: 5 libraries stale (threshold: ≥3)"
+→ Claude CANNOT finish. Must update libraries first.
 ```
 
-### Low disk space — BLOCKED regardless
+## Limitations
 
-```
-$ claude  # any session, home filesystem at 12GB
-...
-Claude tries to stop → hook runs:
-  disk_free=12GB < 15GB critical → exit 2 (blocked)
-  stderr: "Blocked: disk space at 12GB (threshold: 15GB)."
-```
+The mechanical gate enforces **habits** and **completeness**, not content quality. It checks that you captured learning, not whether the learning is correct. For reasoning quality, pair with [self-audit](https://github.com/YuhaoLin2005/self-audit).
 
-## Related Skills
+## Compatibility
 
-- `verification-loop` — Technical checks (build, type, lint, test). Different scope: code output vs learning capture.
-- `gateguard` — Same architecture (deterministic hook + pattern matching), different lifecycle point (PreToolUse vs Stop).
+- Python 3.8+
+- Windows, macOS, Linux
+- Zero dependencies beyond stdlib
+
+## Related
+
+- [checkgrow](https://github.com/YuhaoLin2005/checkgrow) — The methodology behind the mechanical gate: failure patterns, hybrid architecture, T-CBB convergence
+- [self-audit](https://github.com/YuhaoLin2005/self-audit) — Four-dimension reasoning quality audit (C/C/G/H)
+- [dual-pool-review](https://github.com/YuhaoLin2005/dual-pool-review) — Multi-persona adversarial review methodology
+
+## License
+
+MIT
