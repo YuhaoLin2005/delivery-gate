@@ -1,6 +1,6 @@
-# Delivery Gate — Dual-Layer Mechanical Gate for Claude Code
+# Delivery Gate
 
-A **two-layer Stop hook system** that monitors process and enforces output — using only deterministic checks: regex markers, file timestamps, and disk usage. No AI inference.
+A Stop hook for Claude Code. Two Python scripts, zero dependencies, deterministic checks only.
 
 ```
 config-health（Process Monitor）→ tracks rule execution → soft feedback (never blocks)
@@ -10,23 +10,14 @@ quality-gate（Output Enforcer）→ checks output completeness → hard block (
        Delivery
 ```
 
-| Dimension | config-health | quality-gate |
-|-----------|--------------|--------------|
-| **Problem** | Doing it right | Done doing it |
-| **Checks** | Process (rule markers) | Output (five-library mtime) |
-| **Method** | Regex counting `[✓RULE]` | File timestamps |
-| **Blocks** | Never blocks (exit 0) | ≥3 stale → hard block |
-| **Cost** | Normal path: zero tokens | Only surfaces on anomaly |
-| **Trigger** | Every Stop | Every Stop (after config-health) |
-
 ## Why Two Layers
 
 A single-layer gate is either too soft (reminders → ignored) or too hard (frequent blocks → bypassed). Two layers each do one job:
 
 - **Process layer (soft):** Rule execution rate low? Remind but don't block — might be exploring, experimenting
-- **Output layer (hard):** Five libraries not updated? Block — delivery must be complete, non-negotiable
+- **Output layer (hard):** Learning logs not updated? Block — delivery must be complete, non-negotiable
 
-The boundary isn't "importance" — it's **"can this be fixed later?"** Missed rule execution can be retroactively marked. Missed output records are lost forever.
+The boundary: **can it be fixed later?** Missed rule execution can be retroactively marked. Missed output records are lost forever.
 
 ## What's Inside
 
@@ -36,7 +27,7 @@ The boundary isn't "importance" — it's **"can this be fixed later?"** Missed r
 |-------|-----------|--------|
 | Rule marker counting | Regex `[✓THINK]` `[✓CONTEXT]` `[✓DELIVERY]` in transcript | Log to JSONL, update pending-verifications.md |
 | Verification tracking | 3-session window per rule | Verified → auto-remove from pending list |
-| Config integrity | Core files exist + non-empty | Dashboard alert (manual check only) |
+| Config integrity | Core files exist + non-empty | Dashboard alert |
 | Session cost tier | Cumulative sessions count | Dashboard tier (L0-L3) |
 
 ### quality-gate.py — Output Enforcer
@@ -75,33 +66,10 @@ Add to `~/.claude/settings.json` (order matters — config-health first):
 }
 ```
 
-Manual health dashboard:
 ```bash
+# Manual health dashboard
 python3 ~/.claude/scripts/config-health.py --check
 ```
-
-## Where Things Live
-
-This repo is the **canonical Python reference implementation** — the easiest to read, test, and contribute to. For the full picture:
-
-| Aspect | Where |
-|---|---|
-| **Methodology** (why this design) | [checkgrow](https://github.com/gategrow/checkgrow) — failure patterns, hybrid architecture, canonical framework |
-| **Canonical implementation** (what you're reading) | **delivery-gate** (this repo) — full feature set (config-health + rationalization detection) |
-| **Production deployment** (Node.js, zero-config) | [ECC fork](https://github.com/YuhaoLin2005/ecc/blob/master/skills/delivery-gate/SKILL.md) — auto-registering Stop hook, rationalization removed |
-
-**Implementation differences are by design, not drift.** The Python reference has rationalization detection + config-health (full feature set). The Node.js production fork removes rationalization (regex on non-English transcripts is unreliable) and adds zero-config auto-registration. **If you're adding a feature, start here** — this is the canonical source for the gate logic. Changes flow from this repo to the ECC fork, not the reverse.
-
-## Community
-
-delivery-gate is a community project — contributions and feedback welcome.
-
-- **Found a bug?** [Open an issue](https://github.com/gategrow/delivery-gate/issues/new?template=bug_report.md)
-- **Have an idea?** [Request a feature](https://github.com/gategrow/delivery-gate/issues/new?template=feature_request.md)
-- **Want to contribute?** Read [CONTRIBUTING.md](CONTRIBUTING.md) — good first issues are tagged and waiting
-- **Deep dive:** [checkgrow](https://github.com/gategrow/checkgrow) explains the methodology behind the mechanical gate
-
-Maintained by [@YuhaoLin2005](https://github.com/YuhaoLin2005)
 
 ## Configuration
 
@@ -123,38 +91,9 @@ Maintained by [@YuhaoLin2005](https://github.com/YuhaoLin2005)
 | `COMPLEX_THRESHOLD` | 3 | Edit/Write calls to classify as complex |
 | `DISK_CRIT_GB` | 15 | Block below this |
 
-## The Dual-Layer Principle
-
-> **"The boundary between soft and hard is not importance — it's whether it can be fixed later."**
-
-This architecture transplants three existing practices into AI config management:
-- **TDD verifiability**: Rules embed their own success criteria (`[✓THINK]` markers) — following isn't a vague promise, it's a countable binary
-- **Unix silence**: "No news is good news" → normal path consumes zero context tokens
-- **Control theory feedback loop**: config-health.py → pending-verifications.md → startup read → AI focuses → verification passes → auto-delete
-
 ## Limitations
 
-The mechanical gate enforces **habits** and **completeness**, not content quality. It checks that you captured learning, not whether the learning is correct. For reasoning quality, pair with [self-audit](https://github.com/gategrow/self-audit).
-
-## Compatibility
-
-- Python 3.8+
-- Windows, macOS, Linux
-- Zero dependencies beyond stdlib
-
-## Quality
-
-4 rounds of CodeRabbit + Greptile review on quality-gate.py caught 9 real bugs:
-- Missing stdin→stdout pass-through
-- Python 3.8 crash (`list[str]` not subscriptable)
-- Non-recursive directory scan
-- Unhandled OSError exceptions
-
-## Related
-
-- [checkgrow](https://github.com/gategrow/checkgrow) — Full AI quality toolkit (delivery-gate is the mechanical layer)
-- [self-audit](https://github.com/gategrow/self-audit) — Four-dimension reasoning quality audit
-- [dual-pool-review](https://github.com/gategrow/dual-pool-review) — Multi-persona adversarial review methodology
+This checks **process completeness** (did you update your logs?), not **output correctness** (is the code right?). It's a reminder system for habits and learning capture — it doesn't verify code quality or catch logic bugs. For output consistency checks, pair with [self-audit](https://github.com/gategrow/self-audit).
 
 ## License
 
