@@ -12,6 +12,7 @@ from __future__ import annotations
 import sys
 import os
 import re
+import json
 import datetime
 import shutil
 import logging
@@ -79,11 +80,12 @@ def check_disk() -> Optional[int]:
 
 
 def check_stale_libs(mem_dir: str) -> list[str]:
-    """Return list of library names not updated today."""
+    """Return list of library names not updated today.
+    Each library gets its own try/except — one bad path won't fail all checks."""
     today = datetime.date.today()
     stale: list[str] = []
-    try:
-        for name, path in LIBS.items():
+    for name, path in LIBS.items():
+        try:
             full = os.path.join(mem_dir, path)
             if os.path.isdir(full):
                 has_today = False
@@ -111,16 +113,14 @@ def check_stale_libs(mem_dir: str) -> list[str]:
                     stale.append(name)  # can't check → treat as stale
             else:
                 stale.append(name)
-    except OSError as e:
-        log.warning('cannot check stale libs in %s: %s', mem_dir, e)
-        return []  # inconclusive — don't block on filesystem errors
+        except OSError:
+            stale.append(name)  # can't access this library → treat as stale
     return stale
 
 
 def count_edits(text: str) -> int:
-    """Count Edit/Write tool invocations in the last assistant response."""
-    tail = text[-8000:]
-    return len(re.findall(r'(?:Edit|Write)\s+', tail))
+    """Count Edit/Write tool invocations in transcript using JSON structure."""
+    return len(re.findall(r'"name":\s*"(?:Edit|Write)"', text))
 
 
 def main() -> None:
@@ -128,6 +128,18 @@ def main() -> None:
 
     # Stop-hook contract: echo stdin to stdout so the harness can forward the payload
     sys.stdout.write(raw)
+
+    # 0. Resolve transcript — newer Claude Code passes structured JSON with transcript_path
+    transcript = raw
+    try:
+        payload = json.loads(raw)
+        if isinstance(payload, dict) and 'transcript_path' in payload:
+            tp = os.path.expanduser(payload['transcript_path'])
+            if os.path.exists(tp):
+                with open(tp, 'r', encoding='utf-8') as f:
+                    transcript = f.read()
+    except (json.JSONDecodeError, TypeError, OSError):
+        pass  # Plain text — use raw directly
 
     # 1. Disk check FIRST — must always run, regardless of transcript length
     disk_free = check_disk()
@@ -140,10 +152,10 @@ def main() -> None:
             log.warning('WARN: disk space %dGB free', disk_free)
 
     # 2. Short session — skip remaining checks
-    if len(raw) < MIN_CHARS:
+    if len(transcript) < MIN_CHARS:
         sys.exit(0)
 
-    tail = raw[-8000:]
+    tail = transcript[-8000:]
 
     # 3. Rationalization pattern detection
     hits = []
@@ -156,7 +168,7 @@ def main() -> None:
 
     # 4. Learning capture check
     mem_dir = get_project_memory_dir()
-    edit_count = count_edits(raw)
+    edit_count = count_edits(transcript)
     is_complex = edit_count >= COMPLEX_THRESHOLD
 
     if mem_dir:
@@ -180,8 +192,9 @@ def main() -> None:
     if parts:
         log.warning('\n'.join(parts))
 
-    # 5. Block if complex task completed without learning capture
-    if is_complex and len(stale) >= 3:
+    # 5. Block if complex task completed without learning capture.
+    #    growth-log stale alone is sufficient — it's the most important library.
+    if is_complex and (len(stale) >= 3 or 'growth-log' in stale):
         log.warning('Blocked: complex task completed but no learning captured today.')
         log.warning('Update at least one library (e.g. growth-log) before stopping.')
         sys.exit(2)
